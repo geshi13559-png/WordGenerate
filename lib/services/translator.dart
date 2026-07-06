@@ -21,4 +21,11 @@ class Translator {
 
   /// 単語の日本語訳を返す。見つからなければnull
   String? translate(String word) => _dict?[word.trim().toLowerCase()];
+
+  /// 辞書全体を単語のあいうえお（アルファベット）順で返す（辞書画面での一覧・検索用）
+  List<MapEntry<String, String>> get allEntries {
+    final entries = _dict?.entries.toList() ?? [];
+    entries.sort((a, b) => a.key.compareTo(b.key));
+    return entries;
+  }
 }
