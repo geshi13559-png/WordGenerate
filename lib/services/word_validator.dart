@@ -5,13 +5,20 @@ class WordValidator {
   Set<String>? _dictionary;
 
   /// 辞書ファイルを読み込む（アプリ起動時に一度だけ呼ぶ）
+  ///
+  /// 英和辞書(ejdict.tsv)に載っている＝日本語の意味を説明できる単語だけを
+  /// 正解として扱う。マイナーすぎて意味の説明がつかない単語や、
+  /// 差別的な語（あらかじめejdict.tsvから除外済み）を正解にしないため。
   Future<void> loadDictionary() async {
-    final raw = await rootBundle.loadString('assets/words.txt');
-    _dictionary = raw
-        .split('\n')
-        .map((w) => w.trim().toLowerCase())
-        .where((w) => w.isNotEmpty)
-        .toSet();
+    final raw = await rootBundle.loadString('assets/ejdict.tsv');
+    final dictionary = <String>{};
+    for (final line in raw.split('\n')) {
+      final tabIndex = line.indexOf('\t');
+      if (tabIndex == -1) continue;
+      final word = line.substring(0, tabIndex).trim().toLowerCase();
+      if (word.isNotEmpty) dictionary.add(word);
+    }
+    _dictionary = dictionary;
   }
 
   /// お題の文字だけで作れているか
