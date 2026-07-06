@@ -35,6 +35,9 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # 単語の発音読み上げ（端末組み込みTTS、オフラインで動作）
+  flutter_tts: ^4.2.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -58,6 +61,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/words.txt
+    - assets/ejdict.tsv
 
 
   # To add assets to your application, add an assets section, like this:

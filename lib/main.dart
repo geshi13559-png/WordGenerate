@@ -1,13 +1,20 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'services/letter_generator.dart';
+import 'services/translator.dart';
 import 'services/word_validator.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final validator = WordValidator();
-  await validator.loadDictionary();
-  runApp(WordBattleApp(validator: validator));
+  final translator = Translator();
+  await Future.wait([
+    validator.loadDictionary(),
+    translator.loadDictionary(),
+  ]);
+  runApp(WordBattleApp(validator: validator, translator: translator));
 }
 
 // 木目カラーパレット
@@ -22,7 +29,12 @@ class WoodColors {
 
 class WordBattleApp extends StatelessWidget {
   final WordValidator validator;
-  const WordBattleApp({super.key, required this.validator});
+  final Translator translator;
+  const WordBattleApp({
+    super.key,
+    required this.validator,
+    required this.translator,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -33,14 +45,19 @@ class WordBattleApp extends StatelessWidget {
         scaffoldBackgroundColor: WoodColors.bg,
         fontFamily: 'Georgia',
       ),
-      home: GameScreen(validator: validator),
+      home: GameScreen(validator: validator, translator: translator),
     );
   }
 }
 
 class GameScreen extends StatefulWidget {
   final WordValidator validator;
-  const GameScreen({super.key, required this.validator});
+  final Translator translator;
+  const GameScreen({
+    super.key,
+    required this.validator,
+    required this.translator,
+  });
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -57,25 +74,44 @@ class _GameScreenState extends State<GameScreen>
   static const _flipInitialDelay = Duration(milliseconds: 250);
 
   late final AnimationController _flipController;
+  final _tts = FlutterTts();
+
+  static const _roundSeconds = 45;
+  Timer? _roundTimer;
+  int _timeLeft = _roundSeconds;
+  bool _roundActive = false; // タイマーが進行中か（全部めくり終わってから時間切れまでtrue）
+  bool _timeUp = false;      // 時間切れになったか
 
   List<String> _letters = [];       // 出たお題の文字
   List<bool> _used = [];            // 各タイルを使用済みか
   List<int> _selectedIndexes = [];  // 選んだタイルの順番（indexで記録）
   final Set<String> _usedWords = {}; // 既に得点に使った単語
+  final List<_FoundWord> _foundWords = []; // 作れた単語（表示用）
   String _message = 'スタートを押してね';
   int _score = 0;
 
   @override
   void initState() {
     super.initState();
-    _flipController = AnimationController(vsync: this, duration: _flipDuration);
+    _tts.setLanguage('en-US');
+    _flipController = AnimationController(vsync: this, duration: _flipDuration)
+      ..addStatusListener((status) {
+        // 全タイルのフリップが完了したタイミングでタイマーを開始する
+        if (status == AnimationStatus.completed) {
+          _beginTimer();
+        }
+      });
   }
 
   @override
   void dispose() {
     _flipController.dispose();
+    _roundTimer?.cancel();
+    _tts.stop();
     super.dispose();
   }
+
+  Future<void> _speak(String word) => _tts.speak(word);
 
   // index番目のタイルが今どれだけフリップしたか（0=裏, 1=表）
   double _flipProgress(int index) {
@@ -89,11 +125,17 @@ class _GameScreenState extends State<GameScreen>
   }
 
   void _startRound() {
+    _roundTimer?.cancel();
     setState(() {
-      _letters = _generator.generate(count: 7);
+      _letters = _generator.generate(count: 11);
       _used = List.filled(_letters.length, false);
       _selectedIndexes = [];
-      _message = 'タイルをタップして単語を作ろう';
+      _usedWords.clear();
+      _foundWords.clear();
+      _timeLeft = _roundSeconds;
+      _roundActive = false; // めくり終わるまではタイマー・操作なし
+      _timeUp = false;
+      _message = 'めくれるのを待ってね…';
     });
     final totalMs = _flipInitialDelay.inMilliseconds +
         _flipDuration.inMilliseconds +
@@ -103,7 +145,28 @@ class _GameScreenState extends State<GameScreen>
       ..forward(from: 0);
   }
 
+  // 全タイルのフリップ完了時（AnimationStatus.completed）に呼ばれる
+  void _beginTimer() {
+    setState(() {
+      _roundActive = true;
+      _message = 'タイルをタップして単語を作ろう';
+    });
+    _roundTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _timeLeft--;
+        if (_timeLeft <= 0) {
+          _timeLeft = 0;
+          _roundActive = false;
+          _timeUp = true;
+          _message = '⏰ 時間切れ！ SCORE $_score点';
+          timer.cancel();
+        }
+      });
+    });
+  }
+
   void _tapTile(int index) {
+    if (!_roundActive) return;
     if (_used[index]) return;
     if (_flipProgress(index) < 1.0) return; // めくり終わるまでは選べない
     setState(() {
@@ -137,6 +200,14 @@ class _GameScreenState extends State<GameScreen>
       setState(() => _message = 'まずスタートを押してね');
       return;
     }
+    if (_timeUp) {
+      setState(() => _message = '⏰ 時間切れです。スタートを押してね');
+      return;
+    }
+    if (!_roundActive) {
+      setState(() => _message = 'めくれるのを待ってね…');
+      return;
+    }
     final word = _currentWord;
     final lowerWord = word.toLowerCase();
     final ok = widget.validator.validate(word, _letters);
@@ -146,9 +217,13 @@ class _GameScreenState extends State<GameScreen>
       } else if (_usedWords.contains(lowerWord)) {
         _message = '❌ "$word" はすでに使われました';
       } else if (ok) {
-        _score += word.length;
+        _score += 1;
         _usedWords.add(lowerWord);
-        _message = '⭕️ "$word" 正解！ +${word.length}点';
+        _foundWords.add(_FoundWord(
+          word: word.toUpperCase(),
+          meaning: widget.translator.translate(lowerWord),
+        ));
+        _message = '⭕️ "$word" 正解！ +1点';
       } else {
         _message = '❌ "$word" は無効です';
       }
@@ -164,22 +239,48 @@ class _GameScreenState extends State<GameScreen>
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // スコア
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(
-                  color: WoodColors.board,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'SCORE  $_score',
-                  style: const TextStyle(
-                    fontSize: 28,
-                    color: WoodColors.cream,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
+              // スコア・タイマー
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: WoodColors.board,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'SCORE  $_score',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        color: WoodColors.cream,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2,
+                      ),
+                    ),
                   ),
-                ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: WoodColors.board,
+                      borderRadius: BorderRadius.circular(12),
+                      border: _roundActive && _timeLeft <= 10
+                          ? Border.all(color: Colors.redAccent, width: 2)
+                          : null,
+                    ),
+                    child: Text(
+                      '⏱ $_timeLeft',
+                      style: TextStyle(
+                        fontSize: 24,
+                        color: _roundActive && _timeLeft <= 10
+                            ? Colors.redAccent
+                            : WoodColors.cream,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 24),
 
@@ -235,7 +336,27 @@ class _GameScreenState extends State<GameScreen>
                   _WoodButton(label: 'クリア', onTap: _clear),
                 ],
               ),
-              const Spacer(),
+              const SizedBox(height: 16),
+              const Text(
+                '作った単語',
+                style: TextStyle(color: WoodColors.cream, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: _foundWords
+                        .map((w) => _WordChip(
+                              entry: w,
+                              onSpeak: () => _speak(w.word.toLowerCase()),
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ),
 
               // メッセージ
               Text(
@@ -256,6 +377,68 @@ class _GameScreenState extends State<GameScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// 作れた単語1つ分のデータ（単語＋日本語訳）
+class _FoundWord {
+  final String word;
+  final String? meaning;
+  const _FoundWord({required this.word, this.meaning});
+}
+
+// 作れた単語1つ分のチップ
+class _WordChip extends StatelessWidget {
+  final _FoundWord entry;
+  final VoidCallback onSpeak;
+  const _WordChip({required this.entry, required this.onSpeak});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: WoodColors.board,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: WoodColors.tileDark, width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: onSpeak,
+            child: const Icon(
+              Icons.volume_up,
+              size: 16,
+              color: WoodColors.cream,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                entry.word,
+                style: const TextStyle(
+                  color: WoodColors.cream,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              if (entry.meaning != null)
+                Text(
+                  entry.meaning!,
+                  style: const TextStyle(
+                    color: WoodColors.tile,
+                    fontSize: 11,
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }

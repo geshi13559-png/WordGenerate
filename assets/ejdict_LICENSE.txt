@@ -1,0 +1,6 @@
+ejdict.tsv is derived from EJDict (https://github.com/kujirahand/EJDict),
+licensed under CC0 1.0 Universal (Public Domain Dedication).
+See https://creativecommons.org/publicdomain/zero/1.0/ for details.
+
+Entries were filtered to words that also appear in this app's
+assets/words.txt game dictionary, and long definitions were truncated.
