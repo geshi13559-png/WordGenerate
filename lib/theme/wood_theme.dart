@@ -101,7 +101,7 @@ class WoodButton extends StatelessWidget {
 class FloorPainter extends CustomPainter {
   const FloorPainter();
 
-  static const _plankTones = [
+  static const plankTones = [
     [Color(0xFFF0DEAE), Color(0xFFE2C88C)],
     [Color(0xFFE6CD93), Color(0xFFD6B473)],
     [Color(0xFFDCC086), Color(0xFFC9A565)],
@@ -122,10 +122,10 @@ class FloorPainter extends CustomPainter {
 
       int toneIdx;
       do {
-        toneIdx = rng.nextInt(_plankTones.length);
-      } while (toneIdx == prevTone && _plankTones.length > 1);
+        toneIdx = rng.nextInt(plankTones.length);
+      } while (toneIdx == prevTone && plankTones.length > 1);
       prevTone = toneIdx;
-      final tone = _plankTones[toneIdx];
+      final tone = plankTones[toneIdx];
 
       final rect = Rect.fromLTWH(0, y, size.width, plankH);
       canvas.drawRect(
@@ -206,7 +206,9 @@ class FloorPainter extends CustomPainter {
   bool shouldRepaint(covariant FloorPainter oldDelegate) => false;
 }
 
-/// 板目フローリングの背景。各画面の一番下に敷く共通ウィジェット。
+/// 板目フローリングの背景。スクロールしない固定面（盤面・ヘッダーなど）の
+/// 一番下に敷く共通ウィジェット。スクロールする行リストには使わず、
+/// 代わりに各行自体を床板カードにすること（木目とテキストがずれるため）。
 class WoodFloorBackground extends StatelessWidget {
   const WoodFloorBackground({super.key});
 

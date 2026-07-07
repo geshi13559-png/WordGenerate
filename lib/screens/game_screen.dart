@@ -530,22 +530,30 @@ class _GameScreenState extends State<GameScreen>
                   const Eyebrow('見つけた単語'),
                   const SizedBox(height: 8),
                   Expanded(
-                    child: SingleChildScrollView(
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        alignment: WrapAlignment.center,
-                        children: _foundWords
-                            .map((w) => _WordChip(
-                                  entry: w,
-                                  isFavorite: widget.favorites.isFavorite(w.word),
-                                  onSpeak: () => _speak(w.word.toLowerCase()),
-                                  onToggleFavorite: () async {
-                                    await widget.favorites.toggle(w.word);
-                                    setState(() {});
-                                  },
-                                ))
-                            .toList(),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: ListView.separated(
+                        itemCount: _foundWords.length,
+                        separatorBuilder: (_, _) => Container(
+                          height: 1,
+                          color: WoodColors.oakHi.withValues(alpha: 0.35),
+                        ),
+                        itemBuilder: (context, i) {
+                          final w = _foundWords[i];
+                          final tone = FloorPainter
+                              .plankTones[i % FloorPainter.plankTones.length];
+                          return _FoundWordRow(
+                            entry: w,
+                            isFavorite: widget.favorites.isFavorite(w.word),
+                            toneTop: tone[0],
+                            toneBottom: tone[1],
+                            onSpeak: () => _speak(w.word.toLowerCase()),
+                            onToggleFavorite: () async {
+                              await widget.favorites.toggle(w.word);
+                              setState(() {});
+                            },
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -607,14 +615,23 @@ class _FoundWord {
 }
 
 // 作れた単語1つ分のチップ
-class _WordChip extends StatelessWidget {
+// 見つけた単語1行＝床板1枚のカード。辞書画面の行と同じ考え方で、
+// 行の高さを揃え、板の継ぎ目（影＋ハイライトの2重線）で区切ることで
+// スクロールしても木目と単語が絶対にずれないようにしている。
+class _FoundWordRow extends StatelessWidget {
+  static const height = 64.0;
+
   final _FoundWord entry;
   final bool isFavorite;
+  final Color toneTop;
+  final Color toneBottom;
   final VoidCallback onSpeak;
   final VoidCallback onToggleFavorite;
-  const _WordChip({
+  const _FoundWordRow({
     required this.entry,
     required this.isFavorite,
+    required this.toneTop,
+    required this.toneBottom,
     required this.onSpeak,
     required this.onToggleFavorite,
   });
@@ -622,64 +639,64 @@ class _WordChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      height: height,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: WoodColors.paper.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(9),
-        boxShadow: [
-          BoxShadow(
-            color: WoodColors.oakGroove.withValues(alpha: 0.15),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [toneTop, toneBottom],
+        ),
+        border: Border(
+          bottom: BorderSide(
+            color: WoodColors.oakGroove.withValues(alpha: 0.55),
+            width: 1.6,
           ),
-        ],
+        ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
           GestureDetector(
             onTap: onSpeak,
             child: Container(
-              width: 22,
-              height: 22,
+              width: 26,
+              height: 26,
               decoration: const BoxDecoration(
                 color: WoodColors.ink,
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.volume_up,
-                size: 13,
+                size: 14,
                 color: WoodColors.paper,
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          ConstrainedBox(
-            // 画面が狭いときは意味がはみ出さず、2〜3行に折り返して表示する
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width * 0.5,
-            ),
+          const SizedBox(width: 10),
+          Expanded(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   entry.word,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontFamily: 'Fraunces',
                     fontWeight: FontWeight.w700,
                     color: WoodColors.ink,
-                    fontSize: 15,
+                    fontSize: 16,
                   ),
                 ),
                 if (entry.meaning != null)
                   Text(
                     entry.meaning!,
-                    maxLines: 3,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: WoodColors.ink.withValues(alpha: 0.72),
-                      fontSize: 11,
+                      fontSize: 12,
                     ),
                   ),
               ],
@@ -688,10 +705,9 @@ class _WordChip extends StatelessWidget {
           GestureDetector(
             onTap: onToggleFavorite,
             child: Padding(
-              padding: const EdgeInsets.only(left: 6),
+              padding: const EdgeInsets.only(left: 8),
               child: Icon(
                 isFavorite ? Icons.star : Icons.star_border,
-                size: 18,
                 color: isFavorite
                     ? WoodColors.amber
                     : WoodColors.ink.withValues(alpha: 0.35),

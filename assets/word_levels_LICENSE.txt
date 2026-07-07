@@ -1,0 +1,27 @@
+word_levels.tsv is derived from the CEFR-J Vocabulary Profile (ver 1.5),
+compiled by Yukio Tono, Tokyo University of Foreign Studies (CEFR-J
+project, http://www.cefr-j.org/), distributed via
+https://github.com/openlanguageprofiles/olp-en-cefrj
+
+Per the dataset's terms of use: "CEFR-J vocabulary and grammar profile
+datasets can be used for research and commercial purposes with no
+charge, provided that you cite the dataset properly. The copyright
+belongs to Tono Laboratory at TUFS (Tokyo University of Foreign
+Studies)."
+
+Reference:
+The CEFR-J Wordlist Version 1.5. Compiled by Yukio Tono, Tokyo
+University of Foreign Studies. http://www.cefr-j.org/download.html
+
+Entries were filtered to words that also appear in this app's
+assets/ejdict.tsv game dictionary. Only the coarse CEFR level
+(A1/A2/B1/B2) is kept; this app maps it approximately to Japanese
+school grade bands (elementary/JHS/HS) for convenience, which is an
+approximation, not an official MEXT curriculum mapping.
+
+The app also lets users relabel the same four CEFR-based buckets as
+approximate 英検 grades, TOEIC score bands, TOEFL iBT bands, or IELTS
+bands, based on each test's own published CEFR correspondence tables.
+This does not reflect actual per-test word frequency (no such open
+dataset exists for these tests) — it is the same underlying CEFR
+classification shown under a different exam's scoring scale.
