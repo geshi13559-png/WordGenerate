@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/favorites_service.dart';
+import '../services/player_stats_service.dart';
 import '../services/translator.dart';
+import '../services/word_level_service.dart';
 import '../services/word_validator.dart';
 import '../theme/wood_theme.dart';
 import 'game_screen.dart';
@@ -10,11 +12,15 @@ class GameModeScreen extends StatelessWidget {
   final WordValidator validator;
   final Translator translator;
   final FavoritesService favorites;
+  final WordLevelService wordLevels;
+  final PlayerStatsService playerStats;
   const GameModeScreen({
     super.key,
     required this.validator,
     required this.translator,
     required this.favorites,
+    required this.wordLevels,
+    required this.playerStats,
   });
 
   void _comingSoon(BuildContext context, String label) {
@@ -63,6 +69,8 @@ class GameModeScreen extends StatelessWidget {
                             validator: validator,
                             translator: translator,
                             favorites: favorites,
+                            wordLevels: wordLevels,
+                            playerStats: playerStats,
                           ),
                         ),
                       ),

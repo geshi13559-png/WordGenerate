@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../services/favorites_service.dart';
 import '../services/letter_generator.dart';
+import '../services/player_stats_service.dart';
 import '../services/translator.dart';
+import '../services/word_level_service.dart';
 import '../services/word_validator.dart';
 import '../theme/wood_theme.dart';
 
@@ -15,11 +17,15 @@ class GameScreen extends StatefulWidget {
   final WordValidator validator;
   final Translator translator;
   final FavoritesService favorites;
+  final WordLevelService wordLevels;
+  final PlayerStatsService playerStats;
   const GameScreen({
     super.key,
     required this.validator,
     required this.translator,
     required this.favorites,
+    required this.wordLevels,
+    required this.playerStats,
   });
 
   @override
@@ -62,6 +68,7 @@ class _GameScreenState extends State<GameScreen>
   List<int> _selectedIndexes = [];  // 選んだタイルの順番（indexで記録）
   final Set<String> _usedWords = {}; // 既に得点に使った単語
   final List<_FoundWord> _foundWords = []; // 作れた単語（表示用）
+  List<_FoundWord> _suggestions = []; // 時間切れ後の「こんな単語も作れたよ」
   String _message = 'スタートを押してね';
   int _score = 0;
 
@@ -191,6 +198,7 @@ class _GameScreenState extends State<GameScreen>
       _selectedIndexes = [];
       _usedWords.clear();
       _foundWords.clear();
+      _suggestions = [];
       _timeLeft = _roundSeconds;
       _roundActive = false; // めくり終わるまではタイマー・操作なし
       _timeUp = false;
@@ -220,6 +228,7 @@ class _GameScreenState extends State<GameScreen>
           _roundActive = false;
           _timeUp = true;
           _message = '⏰ 時間切れ！ SCORE $_score点';
+          _suggestions = _computeSuggestions();
           timer.cancel();
           _flashController.forward(from: 0);
         } else if (_timeLeft <= 10) {
@@ -259,6 +268,33 @@ class _GameScreenState extends State<GameScreen>
   String get _currentWord =>
       _selectedIndexes.map((i) => _letters[i]).join();
 
+  // 時間切れ後に見せる「こんな単語も作れたよ」の候補を選ぶ。
+  // このラウンドの文字で作れて、まだ見つけていない単語の中から、
+  // プレイヤーのこれまでの実力に近いレベルのものを優先して5つ選ぶ。
+  List<_FoundWord> _computeSuggestions() {
+    final candidates = <String>[];
+    for (final entry in widget.translator.allEntries) {
+      if (_usedWords.contains(entry.key)) continue;
+      if (!widget.validator.validate(entry.key, _letters)) continue;
+      candidates.add(entry.key);
+    }
+    if (candidates.isEmpty) return [];
+
+    final targetLevel = widget.playerStats.averageLevel;
+    candidates.sort((a, b) {
+      final da = (widget.wordLevels.levelOf(a).index - targetLevel.index).abs();
+      final db = (widget.wordLevels.levelOf(b).index - targetLevel.index).abs();
+      return da.compareTo(db);
+    });
+
+    // レベルが近いものの中からランダムに選び、毎回同じ単語にならないようにする
+    final pool = candidates.take(min(candidates.length, 15)).toList()
+      ..shuffle(Random());
+    return pool.take(5).map((w) {
+      return _FoundWord(word: w.toUpperCase(), meaning: widget.translator.translate(w));
+    }).toList();
+  }
+
   void _submitWord() {
     if (_letters.isEmpty) {
       setState(() => _message = 'まずスタートを押してね');
@@ -288,6 +324,7 @@ class _GameScreenState extends State<GameScreen>
           word: word.toUpperCase(),
           meaning: widget.translator.translate(lowerWord),
         ));
+        widget.playerStats.recordFoundWord(widget.wordLevels.levelOf(lowerWord));
         _message = '⭕️ "$word" 正解！ +1点 (+$_bonusSeconds秒)';
 
         _scoreFill += 1 / _wordsPerPlank;
@@ -558,6 +595,24 @@ class _GameScreenState extends State<GameScreen>
                     ),
                   ),
 
+                  // 時間切れ後：こんな単語も作れたよ
+                  if (_timeUp && _suggestions.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    const Eyebrow('こんな単語も作れたよ'),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: _suggestions
+                          .map((w) => _SuggestionChip(
+                                entry: w,
+                                onSpeak: () => _speak(w.word.toLowerCase()),
+                              ))
+                          .toList(),
+                    ),
+                  ],
+
                   // メッセージ
                   Text(
                     _message,
@@ -715,6 +770,59 @@ class _FoundWordRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// 時間切れ後の「こんな単語も作れたよ」チップ（タップで発音）
+class _SuggestionChip extends StatelessWidget {
+  final _FoundWord entry;
+  final VoidCallback onSpeak;
+  const _SuggestionChip({required this.entry, required this.onSpeak});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onSpeak,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: WoodColors.paper.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(9),
+          boxShadow: [
+            BoxShadow(
+              color: WoodColors.oakGroove.withValues(alpha: 0.15),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              entry.word,
+              style: const TextStyle(
+                fontFamily: 'Fraunces',
+                fontWeight: FontWeight.w700,
+                color: WoodColors.ink,
+                fontSize: 14,
+              ),
+            ),
+            if (entry.meaning != null)
+              Text(
+                entry.meaning!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: WoodColors.ink.withValues(alpha: 0.72),
+                  fontSize: 11,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

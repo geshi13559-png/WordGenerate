@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/favorites_service.dart';
+import '../services/player_stats_service.dart';
 import '../services/translator.dart';
 import '../services/word_level_service.dart';
 import '../services/word_validator.dart';
@@ -13,12 +14,14 @@ class TitleScreen extends StatelessWidget {
   final Translator translator;
   final FavoritesService favorites;
   final WordLevelService wordLevels;
+  final PlayerStatsService playerStats;
   const TitleScreen({
     super.key,
     required this.validator,
     required this.translator,
     required this.favorites,
     required this.wordLevels,
+    required this.playerStats,
   });
 
   @override
@@ -68,6 +71,8 @@ class TitleScreen extends StatelessWidget {
                             validator: validator,
                             translator: translator,
                             favorites: favorites,
+                            wordLevels: wordLevels,
+                            playerStats: playerStats,
                           ),
                         ),
                       ),
