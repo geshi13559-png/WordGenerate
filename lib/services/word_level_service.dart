@@ -116,6 +116,51 @@ extension ExamFrameworkLabel on ExamFramework {
   }
 }
 
+/// 得点・ボーナス時間を決めるための3段階の難易度
+enum ScoreTier { easy, normal, hard }
+
+extension ScoreTierReward on ScoreTier {
+  /// 正解1つあたりの得点
+  int get points {
+    switch (this) {
+      case ScoreTier.easy:
+        return 1;
+      case ScoreTier.normal:
+        return 2;
+      case ScoreTier.hard:
+        return 3;
+    }
+  }
+
+  /// 正解1つあたりの残り時間ボーナス（秒）
+  int get bonusSeconds {
+    switch (this) {
+      case ScoreTier.easy:
+        return 1;
+      case ScoreTier.normal:
+        return 3;
+      case ScoreTier.hard:
+        return 5;
+    }
+  }
+}
+
+extension WordLevelScoreTier on WordLevel {
+  /// 小学校・中1／中2・中3＝簡単、高1・高2＝普通、高3以上・レベル不明＝難しい
+  ScoreTier get scoreTier {
+    switch (this) {
+      case WordLevel.elementary:
+      case WordLevel.ms23:
+        return ScoreTier.easy;
+      case WordLevel.hs12:
+        return ScoreTier.normal;
+      case WordLevel.hs3plus:
+      case WordLevel.unknown:
+        return ScoreTier.hard;
+    }
+  }
+}
+
 /// 単語→学年レベルを引く部品
 class WordLevelService {
   Map<String, WordLevel>? _levels;

@@ -30,6 +30,10 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
   ExamFramework _framework = ExamFramework.grade; // チェックボックスのラベルの基準
   final _tts = FlutterTts();
 
+  // ★お気に入りタブに表示し続ける単語（誤タッチで外してもこの画面にいる間は
+  // 消えず、この画面を開き直した時だけ実際のお気に入り状態に合わせて消える）
+  late final Set<String> _visibleFavorites;
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +48,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
       return a.key.compareTo(b.key);
     });
     _allEntries = entries;
+    _visibleFavorites = {...widget.favorites.favorites};
   }
 
   @override
@@ -54,10 +59,20 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
 
   Future<void> _speak(String word) => _tts.speak(word);
 
+  // お気に入りの付け外し。外した単語はこの画面にいる間は一覧に残したままにする
+  // （誤タッチで消してしまっても、その場でもう一度★を押せば戻せるように）
+  Future<void> _toggleFavorite(String word) async {
+    await widget.favorites.toggle(word);
+    if (widget.favorites.isFavorite(word)) {
+      _visibleFavorites.add(word);
+    }
+    setState(() {});
+  }
+
   List<MapEntry<String, String>> get _filtered {
     final q = _query.trim().toLowerCase();
     return _allEntries.where((e) {
-      if (_favoritesOnly && !widget.favorites.isFavorite(e.key)) return false;
+      if (_favoritesOnly && !_visibleFavorites.contains(e.key)) return false;
       if (_selectedLevels.isNotEmpty &&
           !_selectedLevels.contains(widget.wordLevels.levelOf(e.key))) {
         return false;
@@ -216,10 +231,7 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
                                   toneTop: tone[0],
                                   toneBottom: tone[1],
                                   onSpeak: () => _speak(entry.key),
-                                  onToggleFavorite: () async {
-                                    await widget.favorites.toggle(entry.key);
-                                    setState(() {});
-                                  },
+                                  onToggleFavorite: () => _toggleFavorite(entry.key),
                                 );
                               },
                             ),

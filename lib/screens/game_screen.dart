@@ -56,8 +56,7 @@ class _GameScreenState extends State<GameScreen>
   late final AnimationController _flashController;
   late final Animation<double> _flashOpacity;
 
-  static const _roundSeconds = 45;
-  static const _bonusSeconds = 5; // 1語正解するごとに伸びる時間
+  static const _roundSeconds = 90;
   Timer? _roundTimer;
   int _timeLeft = _roundSeconds;
   bool _roundActive = false; // タイマーが進行中か（全部めくり終わってから時間切れまでtrue）
@@ -317,15 +316,18 @@ class _GameScreenState extends State<GameScreen>
       } else if (_usedWords.contains(lowerWord)) {
         _message = '❌ "$word" はすでに使われました';
       } else if (ok) {
-        _score += 1;
-        _timeLeft += _bonusSeconds;
+        final level = widget.wordLevels.levelOf(lowerWord);
+        final tier = level.scoreTier;
+        _score += tier.points;
+        _timeLeft += tier.bonusSeconds;
         _usedWords.add(lowerWord);
         _foundWords.add(_FoundWord(
           word: word.toUpperCase(),
           meaning: widget.translator.translate(lowerWord),
         ));
-        widget.playerStats.recordFoundWord(widget.wordLevels.levelOf(lowerWord));
-        _message = '⭕️ "$word" 正解！ +1点 (+$_bonusSeconds秒)';
+        widget.playerStats.recordFoundWord(level);
+        _message =
+            '⭕️ "$word" 正解！ +${tier.points}点 (+${tier.bonusSeconds}秒)';
 
         _scoreFill += 1 / _wordsPerPlank;
         if (_scoreFill >= 1.0) {
@@ -607,7 +609,12 @@ class _GameScreenState extends State<GameScreen>
                       children: _suggestions
                           .map((w) => _SuggestionChip(
                                 entry: w,
+                                isFavorite: widget.favorites.isFavorite(w.word),
                                 onSpeak: () => _speak(w.word.toLowerCase()),
+                                onToggleFavorite: () async {
+                                  await widget.favorites.toggle(w.word);
+                                  setState(() {});
+                                },
                               ))
                           .toList(),
                     ),
@@ -775,54 +782,93 @@ class _FoundWordRow extends StatelessWidget {
   }
 }
 
-// 時間切れ後の「こんな単語も作れたよ」チップ（タップで発音）
+// 時間切れ後の「こんな単語も作れたよ」チップ（発音・お気に入り登録ができる）
 class _SuggestionChip extends StatelessWidget {
   final _FoundWord entry;
+  final bool isFavorite;
   final VoidCallback onSpeak;
-  const _SuggestionChip({required this.entry, required this.onSpeak});
+  final VoidCallback onToggleFavorite;
+  const _SuggestionChip({
+    required this.entry,
+    required this.isFavorite,
+    required this.onSpeak,
+    required this.onToggleFavorite,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onSpeak,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: WoodColors.paper.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(9),
-          boxShadow: [
-            BoxShadow(
-              color: WoodColors.oakGroove.withValues(alpha: 0.15),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              entry.word,
-              style: const TextStyle(
-                fontFamily: 'Fraunces',
-                fontWeight: FontWeight.w700,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: WoodColors.paper.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(9),
+        boxShadow: [
+          BoxShadow(
+            color: WoodColors.oakGroove.withValues(alpha: 0.15),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: onSpeak,
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: const BoxDecoration(
                 color: WoodColors.ink,
-                fontSize: 14,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.volume_up,
+                size: 13,
+                color: WoodColors.paper,
               ),
             ),
-            if (entry.meaning != null)
+          ),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
               Text(
-                entry.meaning!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: WoodColors.ink.withValues(alpha: 0.72),
-                  fontSize: 11,
+                entry.word,
+                style: const TextStyle(
+                  fontFamily: 'Fraunces',
+                  fontWeight: FontWeight.w700,
+                  color: WoodColors.ink,
+                  fontSize: 14,
                 ),
               ),
-          ],
-        ),
+              if (entry.meaning != null)
+                Text(
+                  entry.meaning!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: WoodColors.ink.withValues(alpha: 0.72),
+                    fontSize: 11,
+                  ),
+                ),
+            ],
+          ),
+          GestureDetector(
+            onTap: onToggleFavorite,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: Icon(
+                isFavorite ? Icons.star : Icons.star_border,
+                size: 18,
+                color: isFavorite
+                    ? WoodColors.amber
+                    : WoodColors.ink.withValues(alpha: 0.35),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
