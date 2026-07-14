@@ -41,6 +41,12 @@ dependencies:
   # お気に入り単語の永続保存
   shared_preferences: ^2.5.5
 
+  # オンライン対戦・ランキング用のバックエンド（Supabase）
+  supabase_flutter: ^2.16.0
+
+  # Supabaseへの接続確認（ヘルスチェック）に使う
+  http: ^1.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
