@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../services/favorites_service.dart';
 import '../services/player_stats_service.dart';
+import '../services/supabase_service.dart';
 import '../services/translator.dart';
 import '../services/word_level_service.dart';
 import '../services/word_validator.dart';
 import '../theme/wood_theme.dart';
 import 'game_screen.dart';
+import 'online_lobby_screen.dart';
 
 /// 「ゲーム」を押した後に出る対戦形式の選択画面
 class GameModeScreen extends StatelessWidget {
@@ -14,6 +16,7 @@ class GameModeScreen extends StatelessWidget {
   final FavoritesService favorites;
   final WordLevelService wordLevels;
   final PlayerStatsService playerStats;
+  final SupabaseService supabase;
   const GameModeScreen({
     super.key,
     required this.validator,
@@ -21,6 +24,7 @@ class GameModeScreen extends StatelessWidget {
     required this.favorites,
     required this.wordLevels,
     required this.playerStats,
+    required this.supabase,
   });
 
   void _comingSoon(BuildContext context, String label) {
@@ -71,6 +75,7 @@ class GameModeScreen extends StatelessWidget {
                             favorites: favorites,
                             wordLevels: wordLevels,
                             playerStats: playerStats,
+                            supabase: supabase,
                           ),
                         ),
                       ),
@@ -91,7 +96,15 @@ class GameModeScreen extends StatelessWidget {
                     child: WoodButton(
                       label: 'オンライン',
                       big: true,
-                      onTap: () => _comingSoon(context, 'オンライン対戦'),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => OnlineLobbyScreen(
+                            translator: translator,
+                            wordLevels: wordLevels,
+                            favorites: favorites,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                   const Spacer(),

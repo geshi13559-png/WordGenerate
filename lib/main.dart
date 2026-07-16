@@ -33,6 +33,8 @@ Future<void> main() async {
     favorites.load(),
     wordLevels.load(),
     playerStats.load(),
+    // 匿名ログイン＋プロフィール作成（オフライン時は内部でnullを返すだけ）
+    supabase.signInAndLoadPlayer(),
   ]);
   runApp(WordBattleApp(
     validator: validator,

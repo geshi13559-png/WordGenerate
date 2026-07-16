@@ -5,6 +5,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import '../services/favorites_service.dart';
 import '../services/letter_generator.dart';
 import '../services/player_stats_service.dart';
+import '../services/supabase_service.dart';
 import '../services/translator.dart';
 import '../services/word_level_service.dart';
 import '../services/word_validator.dart';
@@ -19,6 +20,7 @@ class GameScreen extends StatefulWidget {
   final FavoritesService favorites;
   final WordLevelService wordLevels;
   final PlayerStatsService playerStats;
+  final SupabaseService supabase;
   const GameScreen({
     super.key,
     required this.validator,
@@ -26,6 +28,7 @@ class GameScreen extends StatefulWidget {
     required this.favorites,
     required this.wordLevels,
     required this.playerStats,
+    required this.supabase,
   });
 
   @override
@@ -70,6 +73,12 @@ class _GameScreenState extends State<GameScreen>
   List<_FoundWord> _suggestions = []; // 時間切れ後の「こんな単語も作れたよ」
   String _message = 'スタートを押してね';
   int _score = 0;
+
+  // 時間切れ後：Supabaseに記録した結果（自己ベスト更新・全国順位）。
+  // オフラインや未接続なら null のまま（記録バナーを出さない）。
+  GameResultOutcome? _result;
+  bool _savingResult = false;
+  bool _saveFailed = false; // 接続済みなのに記録に失敗したか
 
   // スコアバー：8語で板1枚分が満ちる（満ちたら次の板へ）
   static const _wordsPerPlank = 8;
@@ -201,6 +210,9 @@ class _GameScreenState extends State<GameScreen>
       _timeLeft = _roundSeconds;
       _roundActive = false; // めくり終わるまではタイマー・操作なし
       _timeUp = false;
+      _result = null;
+      _savingResult = false;
+      _saveFailed = false;
       _scoreFill = 0;
       _scoreFlash = false;
       _message = 'めくれるのを待ってね…';
@@ -220,20 +232,41 @@ class _GameScreenState extends State<GameScreen>
       _message = 'タイルをタップして単語を作ろう';
     });
     _roundTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _timeLeft--;
-        if (_timeLeft <= 0) {
-          _timeLeft = 0;
-          _roundActive = false;
-          _timeUp = true;
-          _message = '⏰ 時間切れ！ SCORE $_score点';
-          _suggestions = _computeSuggestions();
-          timer.cancel();
-          _flashController.forward(from: 0);
-        } else if (_timeLeft <= 10) {
-          _beatController.forward(from: 0);
-        }
-      });
+      _timeLeft--;
+      if (_timeLeft <= 0) {
+        _timeLeft = 0;
+        _roundActive = false;
+        _timeUp = true;
+        _message = '⏰ 時間切れ！ SCORE $_score点';
+        _suggestions = _computeSuggestions();
+        timer.cancel();
+        _flashController.forward(from: 0);
+        setState(() {});
+        _saveResult(); // スコアをSupabaseに記録（オフラインなら内部で何もしない）
+      } else {
+        if (_timeLeft <= 10) _beatController.forward(from: 0);
+        setState(() {});
+      }
+    });
+  }
+
+  // 時間切れ時に、このラウンドの結果をSupabaseへ記録する。
+  // 成功すれば自己ベスト・全国順位を _result に入れてバナー表示に使う。
+  Future<void> _saveResult() async {
+    if (!widget.supabase.isEnabled) return; // オフラインは記録しない
+    setState(() {
+      _savingResult = true;
+      _saveFailed = false;
+    });
+    final outcome = await widget.supabase.recordGameResult(
+      letters: _letters.join(),
+      score: _score,
+    );
+    if (!mounted) return;
+    setState(() {
+      _result = outcome;
+      _saveFailed = outcome == null; // 接続済みなのに記録できなかった
+      _savingResult = false;
     });
   }
 
@@ -437,6 +470,14 @@ class _GameScreenState extends State<GameScreen>
                         onPressed: () => Navigator.of(context).pop(),
                         icon: const Icon(Icons.arrow_back, color: WoodColors.ink),
                       ),
+                      const Spacer(),
+                      // ホーム：一番最初の画面（タイトル）へ戻る
+                      IconButton(
+                        onPressed: () => Navigator.of(context)
+                            .popUntil((route) => route.isFirst),
+                        icon: const Icon(Icons.home_outlined,
+                            color: WoodColors.ink),
+                      ),
                     ],
                   ),
                   // スコアバー・タイマーバー
@@ -597,6 +638,24 @@ class _GameScreenState extends State<GameScreen>
                     ),
                   ),
 
+                  // 時間切れ後：ハイスコアの記録結果（自己ベスト更新・全国順位）
+                  if (_timeUp && (_savingResult || _result != null)) ...[
+                    const SizedBox(height: 10),
+                    _ResultBanner(saving: _savingResult, result: _result),
+                  ],
+                  // 記録に失敗した時だけ、そっと知らせる
+                  if (_timeUp && _saveFailed) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'スコアを記録できませんでした（通信エラー）',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: WoodColors.danger.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
+
                   // 時間切れ後：こんな単語も作れたよ
                   if (_timeUp && _suggestions.isNotEmpty) ...[
                     const SizedBox(height: 10),
@@ -674,6 +733,127 @@ class _FoundWord {
   final String word;
   final String? meaning;
   const _FoundWord({required this.word, this.meaning});
+}
+
+/// 時間切れ後に出す記録結果バナー。
+/// ・記録中はスピナー
+/// ・成功したら自己ベスト更新の有無と全国順位を見せる
+class _ResultBanner extends StatelessWidget {
+  final bool saving;
+  final GameResultOutcome? result;
+  const _ResultBanner({required this.saving, required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    if (saving) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: WoodColors.ink.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 15,
+              height: 15,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: WoodColors.ink,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'スコアを記録中…',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: WoodColors.ink.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final r = result;
+    if (r == null) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [WoodColors.inkSoft, WoodColors.ink],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: WoodColors.ink.withValues(alpha: 0.35),
+            offset: const Offset(0, 3),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          if (r.isNewBest)
+            const Text(
+              '🎉 自己ベスト更新！',
+              style: TextStyle(
+                fontFamily: 'Fraunces',
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+                color: WoodColors.paper,
+              ),
+            )
+          else
+            Text(
+              '自己ベスト ${r.bestScore}点',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: WoodColors.paper.withValues(alpha: 0.85),
+              ),
+            ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '全国 ',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: WoodColors.paper.withValues(alpha: 0.85),
+                ),
+              ),
+              Text(
+                '${r.rank}',
+                style: const TextStyle(
+                  fontFamily: 'Archivo',
+                  fontWeight: FontWeight.w900,
+                  fontSize: 26,
+                  color: WoodColors.paper,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+              Text(
+                ' 位',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: WoodColors.paper.withValues(alpha: 0.85),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // 作れた単語1つ分のチップ

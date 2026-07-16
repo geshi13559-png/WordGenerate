@@ -4,6 +4,9 @@
 *.pyc
 *.swp
 .DS_Store
+
+# Supabase接続情報（鍵を含むのでコミットしない。--dart-define-from-file で読む）
+env.json
 .claude/
 .atom/
 .build/
